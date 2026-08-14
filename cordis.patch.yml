@@ -1,0 +1,5 @@
+# dsh bundle patch：安装本包（dsh plugin add）后，该行插入 profile 的组合层，
+# browser_* 工具对使用该 profile 的所有会话可见。
+- insert:
+    - id: tool-browseruse
+      name: dsh-browseruse

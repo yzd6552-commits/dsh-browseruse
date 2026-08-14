@@ -1,0 +1,54 @@
+{
+  "name": "dsh-browseruse",
+  "version": "1.0.0",
+  "description": "browser-use style browser automation for DeepSeek Harness: drives a dedicated Google Chrome instance (independent profile, cookie persistence) via playwright-core — fine-grained browser tools, autonomous tasks with an internal model loop, scheduled runs, dangerous-action confirmation, captcha hand-off, and per-step screenshots.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "browser-use",
+    "browser-automation",
+    "web-automation",
+    "playwright",
+    "agent",
+    "cordis",
+    "plugin"
+  ],
+  "license": "MIT",
+  "contributors": [
+    {
+      "name": "DeepSeek Harness Agent (deepseek-v4-pro)",
+      "url": "https://github.com/deepseek-ai/deepseek-harness"
+    }
+  ],
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yzd6552-commits/dsh-browseruse.git"
+  },
+  "homepage": "https://github.com/yzd6552-commits/dsh-browseruse#readme",
+  "bugs": {
+    "url": "https://github.com/yzd6552-commits/dsh-browseruse/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "playwright-core": "^1.53.0"
+  }
+}
