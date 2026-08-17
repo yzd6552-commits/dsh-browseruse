@@ -9,6 +9,7 @@ import { chromium } from 'playwright-core';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 export const name = 'dsh-browseruse';
 export const inject = ['tools', 'llm'];
@@ -66,32 +67,72 @@ function getPage(tab) {
   return page;
 }
 
+// 清理仍占用专用 profile 的残留 Chrome 进程（用户手动关闭窗口后可能未完全退出）。
+// 只匹配 user-data-dir=<profileDir> 的进程，绝不误伤用户日常 Chrome。
+function killResidualChrome(profileDir) {
+  try {
+    if (process.platform === 'win32') {
+      // Windows 上通过 PowerShell 按命令行过滤
+      spawnSync(
+        'powershell',
+        ['-NoProfile', '-Command',
+          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*user-data-dir=${profileDir.replace(/\\/g, '\\\\')}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`],
+        { stdio: 'ignore', timeout: 10000 },
+      );
+    } else {
+      // macOS/Linux：pkill -f 精确匹配该 profile 的进程
+      spawnSync('pkill', ['-f', `user-data-dir=${profileDir}`], { stdio: 'ignore', timeout: 10000 });
+    }
+  } catch { /* 清理失败不阻断后续流程 */ }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function ensureBrowser(cfg) {
   if (state.context) {
     try {
       if (activePage()) return state.context;
     } catch { /* 上下文可能已关闭 */ }
+    // 旧上下文已失效（页面全关/连接断开）：先尝试关闭它，避免其进程继续占用 profile 锁
+    const stale = state.context;
     state.context = null;
+    try { stale.close().catch(() => {}); } catch { /* 已关闭 */ }
   }
   if (state.launching) return state.launching;
   state.launching = (async () => {
     mkdirSync(cfg.profileDir, { recursive: true });
-    const context = await chromium.launchPersistentContext(cfg.profileDir, {
+    const launchOptions = {
       channel: 'chrome',
       headless: false,
       viewport: null,
       acceptDownloads: true,
       args: ['--disable-notifications'],
-    });
-    context.on('page', (page) => {
-      page.on('download', (dl) => { state.lastDownload = dl; });
-    });
-    state.context = context;
-    state.launching = null;
-    return context;
+    };
+    const doLaunch = async () => {
+      const context = await chromium.launchPersistentContext(cfg.profileDir, launchOptions);
+      context.on('page', (page) => {
+        page.on('download', (dl) => { state.lastDownload = dl; });
+      });
+      state.context = context;
+      return context;
+    };
+    try {
+      return await doLaunch();
+    } catch (firstError) {
+      // 首次启动失败：最常见原因是残留 Chrome 进程仍占用 profile 锁
+      // （"正在现有的浏览器会话中打开"→ 新实例被拒）。清理后重试一次。
+      killResidualChrome(cfg.profileDir);
+      await sleep(800);
+      try {
+        return await doLaunch();
+      } catch (secondError) {
+        const error = secondError || firstError;
+        throw new Error('启动专用 Chrome 失败：' + (error && error.message ? error.message : String(error)));
+      }
+    }
   })().catch((error) => {
     state.launching = null;
-    throw new Error('启动专用 Chrome 失败：' + (error && error.message ? error.message : String(error)));
+    throw error instanceof Error ? error : new Error(String(error));
   });
   return state.launching;
 }
@@ -1083,6 +1124,8 @@ function registerTools(ctx, cfg) {
         try { await state.context.close(); } catch { /* 已关闭 */ }
         state.context = null;
       }
+      // 兜底：确保没有残留 Chrome 进程继续占用专用 profile
+      killResidualChrome(cfg.profileDir);
       return { closed: true };
     },
     render() { return [{ type: 'text', text: '专用 Chrome 已关闭（cookie/登录态保留在 profile，下次启动仍有效）' }]; },
